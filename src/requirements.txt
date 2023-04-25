@@ -1,0 +1,6 @@
+av
+nd2
+numpy
+openpyxl
+matplotlib
+opencv-python
