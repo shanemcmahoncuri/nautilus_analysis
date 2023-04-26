@@ -1,14 +1,15 @@
-import json
 import argparse
-from time import time
-import numpy as np
 import cv2 as cv
-import openpyxl
-import zipfile
 import matplotlib.pyplot as plt
-from typing import Dict
+import numpy as np
+import openpyxl
+import toml
+import zipfile
+
 from os import makedirs, walk as dir_ls
 from os.path import isdir, basename, join as join_paths
+from time import time
+from typing import Dict
 
 
 """
@@ -32,9 +33,14 @@ def well_data(setup_config: Dict):
     num_vertical_pixels = int(setup_config['num_vertical_pixels'])
     num_frames = int(setup_config['num_frames'])
     bit_depth = int(setup_config['bit_depth'])
+
     if(bit_depth == 8):
         pixel_np_data_type = np.uint8
         pixel_size = 1
+    elif (bit_depth == 12):
+        pixel_np_data_type = np.dtype('<u2')
+        pixel_size = 2
+        print(pixel_np_data_type)
     elif (bit_depth == 16):
         pixel_np_data_type = np.dtype('<u2')
         pixel_size = 2
@@ -43,6 +49,7 @@ def well_data(setup_config: Dict):
         #THIS CONDITION SHOULD THROW AN ERROR RATHER THAN JUST PRINT TO STANDARD OUTPUT
         print(f"Error: {bit_depth} bit images are not supported")
         return(1)
+
     #Check to see if the file size is correct based on the values of num_horizontal_pixels, num_vertical_pixels, num_frames, pixel_size, i.e. the file size should be num_horizontal_pixels*num_vertical_pixels*num_frames*pixel_size bytes
 
     # safely create the output dir if it does not exist
@@ -57,11 +64,13 @@ def well_data(setup_config: Dict):
     frame_to_draw_rois_on = np.fromfile(file=setup_config['input_path'],dtype=pixel_np_data_type,count=(num_horizontal_pixels*num_vertical_pixels ))
     frame_to_draw_rois_on  = frame_to_draw_rois_on.reshape(num_vertical_pixels ,num_horizontal_pixels)
     path_to_save_frame_image = join_paths(setup_config['output_dir_path'], 'roi_locations.png')
+
     if (pixel_size == 2):
         #print(frame_to_draw_rois_on.max())
         frame_to_draw_rois_on = frame_to_draw_rois_on/(frame_to_draw_rois_on.max())
         frame_to_draw_rois_on = frame_to_draw_rois_on * 255
         frame_to_draw_rois_on = frame_to_draw_rois_on.astype('uint8')
+
     frame_with_rois_drawn(frame_to_draw_rois_on, setup_config['wells'], path_to_save_frame_image)
     print("ROI Sanity Check Image Created")
 
@@ -72,11 +81,12 @@ def well_data(setup_config: Dict):
     y_starts = np.empty(num_wells, dtype=np.int64)
     x_stops = np.empty(num_wells, dtype=np.int64)
     y_stops = np.empty(num_wells, dtype=np.int64)
-    i = 0
+
     # extract ca2+ signal in each well for each frame
     print("\nStarting Signal Extraction...")
     StartTime = time()
-    #print(StartTime)
+
+    i = 0
     for well_name, well_info in setup_config['wells'].items():
             if well_info['is_active']:
                 x_starts[i] = int(well_info['roi_coordinates']['upper_left']['x_pos'])
@@ -86,8 +96,8 @@ def well_data(setup_config: Dict):
                 i = i + 1
  
     frame_num=0
+
     while (frame_num < num_frames):
-        #print(f"processing frame number: {input_video_stream.framePosition()} of {num_frames}")
         i=0
         currentFrame = np.fromfile(file=setup_config['input_path'],dtype=pixel_np_data_type ,count=int(num_horizontal_pixels*num_vertical_pixels ),offset = int(frame_num*num_horizontal_pixels*num_vertical_pixels*pixel_size))
         currentFrame = currentFrame.reshape(num_vertical_pixels ,num_horizontal_pixels)
@@ -99,17 +109,13 @@ def well_data(setup_config: Dict):
             signal_values[i, frame_num] = np.mean(currentFrame[y_start:y_end, x_start:x_end])
             i=i+1
         frame_num = frame_num + 1
-        #print(frame_num)
+
     print("Signal Extraction Complete")
     StopTime = time()
-    #print(StopTime)
     print(f"Processed signals in {(StopTime - StartTime)} seconds")
+
     # write each roi's time series data to an xlsx file
     print("\nWriting ROI Signals to XLSX files...")
-    #if 'duration' not in setup_config:
-    #    setup_config['duration'] = input_video_stream.duration()
-    #if 'fps' not in setup_config:
-    #    setup_config['fps'] = input_video_stream.framesPerSecond()
     time_stamps = np.linspace(start=0, stop=setup_config['duration'], num=num_frames)
     setup_config['xlsx_output_dir_path'] = join_paths(setup_config['output_dir_path'], 'xlsx')
     make_xlsx_output_dir(xlsx_output_dir_path=setup_config['xlsx_output_dir_path'])
@@ -126,12 +132,14 @@ def well_data(setup_config: Dict):
     print("\nCreating Signal Plot Sanity Check Image...")
     setup_config['num_well_rows'] = 0
     setup_config['num_well_cols'] = 0
+
     for well_name, well_info in setup_config['wells'].items():
         well_grid_position = well_info['grid_position']
         if well_grid_position['row'] > setup_config['num_well_rows']:
             setup_config['num_well_rows'] = well_grid_position['row']
         if well_grid_position['col'] > setup_config['num_well_cols']:
             setup_config['num_well_cols'] = well_grid_position['col']
+
     # grid rows and columns are 0 indexed so need to increment by 1 to get correct number
     setup_config['num_well_rows'] += 1
     setup_config['num_well_cols'] += 1
@@ -153,25 +161,27 @@ def signals_to_plot(signal_values: np.ndarray, time_stamps: np.ndarray, setup_co
         dpi=300.0,
         layout='constrained'
     )
+
     instrument_name = setup_config['instrument_name']
     recording_date = setup_config['recording_date']
     video_file_name = basename(setup_config['input_path'])
     plot_title = f"{instrument_name} Experiment Data - {recording_date} - {video_file_name}"
+
     fig.suptitle(plot_title, fontsize=20)
     fig.supylabel('ROI Average')
     fig.supxlabel('Time (s)')
-    i=0
-    for well_name, well_info in setup_config['wells'].items():
+
+    for i, (well_name, well_info) in enumerate(setup_config['wells'].items()):
         if not (well_info['is_active']):
             continue
-        #serial_position = well_info['serial_position']
+
         serial_position = i
         well_signal = signal_values[serial_position, :]
         plot_row = well_info['grid_position']['row']
         plot_col = well_info['grid_position']['col']
         axes[plot_row, plot_col].plot(time_stamps, well_signal)
         axes[plot_row, plot_col].set_title(well_name)
-        i=i+1
+
     plt.savefig(plot_file_path)
 
 
@@ -196,11 +206,10 @@ def signal_to_xlsx_for_sdk(signal_values: np.ndarray, time_stamps: np.ndarray, s
         well_plate_barcode = setup_config['barcode']
     else:
         well_plate_barcode = 'NA'
-    i = 0
-    for well_name, well_info in setup_config['wells'].items():
+    for i, (well_name, well_info) in enumerate(setup_config['wells'].items()):
         if not (well_info['is_active']):
             continue
-        #print((well_info['is_active']))
+
         workbook = openpyxl.Workbook()
         sheet = workbook.active
 
@@ -216,16 +225,17 @@ def signal_to_xlsx_for_sdk(signal_values: np.ndarray, time_stamps: np.ndarray, s
         template_start_row = 2
         time_column = 'A'
         signal_column = 'B'
-        #well_data_row = well_info['serial_position']
         well_data_row = i
+
         for data_point_position in range(num_data_points):
             sheet_row = str(data_point_position + template_start_row)
             sheet[time_column + sheet_row] = time_stamps[data_point_position]
             sheet[signal_column + sheet_row] = signal_values[well_data_row, data_point_position]
+
         path_to_output_file = join_paths(output_dir, well_name + '.xlsx')
         workbook.save(filename=path_to_output_file)
         workbook.close()
-        i = i+1
+
 
 def frame_with_rois_drawn(frame_to_draw_on: np.ndarray, wells_info: Dict, path_to_save_frame_image: str):
     """ Draw multiple ROIs on one frame image """
@@ -314,12 +324,11 @@ def roi_signal(roi_with_signal: np.ndarray) -> float:
 
 
 if __name__ == '__main__':
-
     parser = argparse.ArgumentParser(description='Extracts signals from a multi-well microscope experiment')
     parser.add_argument(
-        'json_config_path',
+        'toml_config_path',
         default=None,
-        help='Path to a json file with run config parameters'
+        help='Path to a toml file with run config parameters'
     )
     parser.add_argument(
         '--input_video_path',
@@ -368,8 +377,9 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
 
-    json_file = open(args.json_config_path)
-    setup_config = json.load(json_file)
+    toml_file = open(args.toml_config_path)
+    setup_config = toml.load(toml_file)
+
     if args.input_video_path is not None:
         setup_config['input_path'] = args.input_video_path
     if args.output_dir_path is not None:
@@ -391,4 +401,4 @@ if __name__ == '__main__':
 
     well_data(setup_config=setup_config)
 
-    json_file.close()
+    toml_file.close()
