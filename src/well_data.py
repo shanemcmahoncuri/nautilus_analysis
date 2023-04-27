@@ -11,6 +11,10 @@ from os.path import isdir, basename, join as join_paths
 from time import time
 from typing import Dict
 
+import logging
+logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
+log = logging.getLogger()
+
 
 """
     Extracts signals from multi-well microscope data and stores each wells signal data as a separate xlsx file.
@@ -40,39 +44,38 @@ def well_data(setup_config: Dict):
     elif (bit_depth == 12):
         pixel_np_data_type = np.dtype('<u2')
         pixel_size = 2
-        print(pixel_np_data_type)
+        log.info(pixel_np_data_type)
     elif (bit_depth == 16):
         pixel_np_data_type = np.dtype('<u2')
         pixel_size = 2
-        print(pixel_np_data_type)
+        log.info(pixel_np_data_type)
     else:
         #THIS CONDITION SHOULD THROW AN ERROR RATHER THAN JUST PRINT TO STANDARD OUTPUT
-        print(f"Error: {bit_depth} bit images are not supported")
+        log.error(f"{bit_depth} bit images are not supported")
         return(1)
 
     #Check to see if the file size is correct based on the values of num_horizontal_pixels, num_vertical_pixels, num_frames, pixel_size, i.e. the file size should be num_horizontal_pixels*num_vertical_pixels*num_frames*pixel_size bytes
 
     # safely create the output dir if it does not exist
-    print("\nCreating Output Dir")
+    log.info("Creating Output Dir")
     make_output_dir(setup_config['output_dir_path'])
 
     # open the input stream
-    print("\nOpening Video")
+    log.info("Opening Video")
 
     # save an image with the roi's drawn on it as quick sanity check.
-    print("\nCreating ROI Sanity Check Image...")
+    log.info("Creating ROI Sanity Check Image...")
     frame_to_draw_rois_on = np.fromfile(file=setup_config['input_path'],dtype=pixel_np_data_type,count=(num_horizontal_pixels*num_vertical_pixels ))
     frame_to_draw_rois_on  = frame_to_draw_rois_on.reshape(num_vertical_pixels ,num_horizontal_pixels)
     path_to_save_frame_image = join_paths(setup_config['output_dir_path'], 'roi_locations.png')
 
     if (pixel_size == 2):
-        #print(frame_to_draw_rois_on.max())
         frame_to_draw_rois_on = frame_to_draw_rois_on/(frame_to_draw_rois_on.max())
         frame_to_draw_rois_on = frame_to_draw_rois_on * 255
         frame_to_draw_rois_on = frame_to_draw_rois_on.astype('uint8')
 
     frame_with_rois_drawn(frame_to_draw_rois_on, setup_config['wells'], path_to_save_frame_image)
-    print("ROI Sanity Check Image Created")
+    log.info("ROI Sanity Check Image Created")
 
     # create a numpy array to store the time series of well signal values
     num_wells = num_active_wells(setup_config['wells'])
@@ -83,7 +86,7 @@ def well_data(setup_config: Dict):
     y_stops = np.empty(num_wells, dtype=np.int64)
 
     # extract ca2+ signal in each well for each frame
-    print("\nStarting Signal Extraction...")
+    log.info("Starting Signal Extraction...")
     StartTime = time()
 
     i = 0
@@ -110,26 +113,26 @@ def well_data(setup_config: Dict):
             i=i+1
         frame_num = frame_num + 1
 
-    print("Signal Extraction Complete")
+    log.info("Signal Extraction Complete")
     StopTime = time()
-    print(f"Processed signals in {(StopTime - StartTime)} seconds")
+    log.info(f"Processed signals in {(StopTime - StartTime)} seconds")
 
     # write each roi's time series data to an xlsx file
-    print("\nWriting ROI Signals to XLSX files...")
+    log.info("Writing ROI Signals to XLSX files...")
     time_stamps = np.linspace(start=0, stop=setup_config['duration'], num=num_frames)
     setup_config['xlsx_output_dir_path'] = join_paths(setup_config['output_dir_path'], 'xlsx')
     make_xlsx_output_dir(xlsx_output_dir_path=setup_config['xlsx_output_dir_path'])
     signal_to_xlsx_for_sdk(signal_values, time_stamps, setup_config)
-    print("Writing Signals to XLSX Files Complete")
+    log.info("Writing Signals to XLSX Files Complete")
 
     # zip all the xlsx files into a single archive
-    print("\nCreating Zip Archive For XLSX files...")
+    log.info("Creating Zip Archive For XLSX files...")
     xlsx_archive_file_path = join_paths(setup_config['output_dir_path'], 'xlsx-results.zip')
     zip_files(input_dir_path=setup_config['xlsx_output_dir_path'], zip_file_path=xlsx_archive_file_path)
-    print("Zip Archive For XLSX files Created")
+    log.info("Zip Archive For XLSX files Created")
 
     # save an image with a plot of all well signals
-    print("\nCreating Signal Plot Sanity Check Image...")
+    log.info("Creating Signal Plot Sanity Check Image...")
     setup_config['num_well_rows'] = 0
     setup_config['num_well_cols'] = 0
 
@@ -145,11 +148,7 @@ def well_data(setup_config: Dict):
     setup_config['num_well_cols'] += 1
     plot_file_path = join_paths(setup_config['output_dir_path'], 'roi_signals_plots.png')
     signals_to_plot(signal_values, time_stamps, setup_config, plot_file_path)
-    print("Signal Plot Sanity Check Image Created")
-
-    # clean up
-    #input_video_stream.close()
-    print()
+    log.info("Signal Plot Sanity Check Image Created")
 
 
 def signals_to_plot(signal_values: np.ndarray, time_stamps: np.ndarray, setup_config: Dict, plot_file_path: str):
@@ -324,84 +323,81 @@ def roi_signal(roi_with_signal: np.ndarray) -> float:
 
 
 if __name__ == '__main__':
-    try:
-        parser = argparse.ArgumentParser(description='Extracts signals from a multi-well microscope experiment')
-        parser.add_argument(
-            'toml_config_path',
-            default=None,
-            help='Path to a toml file with run config parameters'
-        )
-        parser.add_argument(
-            '--input_video_path',
-            default=None,
-            help='Path to a video with multi-well data',
-        )
-        parser.add_argument(
-            '--output_dir_path',
-            default=None,
-            help='Path to save all output',
-        )
-        parser.add_argument(
-            '--num_horizontal_pixels',
-            default=None,
-            help='Number of horizontal pixels',
-        )
-        parser.add_argument(
-            '--num_vertical_pixels',
-            default=None,
-            help='Number of vertical pixels',
-        )
-        parser.add_argument(
-            '--num_frames',
-            default=None,
-            help='Number of frames',
-        )
-        parser.add_argument(
-            '--bit_depth',
-            default=None,
-            help='number of bits per pixel',
-        )
-        parser.add_argument(
-            '--scale_factor',
-            default=None,
-            help='Scaling factor, a 3072x2048 image has a scale factor of 1, a 1536x1024 has a scale factor of 2',
-        )
-        parser.add_argument(
-            '--duration',
-            default=None,
-            help='Duration of recording, in seconds',
-        )
-        parser.add_argument(
-            '--fps',
-            default=None,
-            help='number of frames per second',
-        )
-        args = parser.parse_args()
+    parser = argparse.ArgumentParser(description='Extracts signals from a multi-well microscope experiment')
+    parser.add_argument(
+        'toml_config_path',
+        default=None,
+        help='Path to a toml file with run config parameters'
+    )
+    parser.add_argument(
+        '--input_video_path',
+        default=None,
+        help='Path to a video with multi-well data',
+    )
+    parser.add_argument(
+        '--output_dir_path',
+        default=None,
+        help='Path to save all output',
+    )
+    parser.add_argument(
+        '--num_horizontal_pixels',
+        default=None,
+        help='Number of horizontal pixels',
+    )
+    parser.add_argument(
+        '--num_vertical_pixels',
+        default=None,
+        help='Number of vertical pixels',
+    )
+    parser.add_argument(
+        '--num_frames',
+        default=None,
+        help='Number of frames',
+    )
+    parser.add_argument(
+        '--bit_depth',
+        default=None,
+        help='number of bits per pixel',
+    )
+    parser.add_argument(
+        '--scale_factor',
+        default=None,
+        help='Scaling factor, a 3072x2048 image has a scale factor of 1, a 1536x1024 has a scale factor of 2',
+    )
+    parser.add_argument(
+        '--duration',
+        default=None,
+        help='Duration of recording, in seconds',
+    )
+    parser.add_argument(
+        '--fps',
+        default=None,
+        help='number of frames per second',
+    )
+    args = parser.parse_args()
 
-        toml_file = open(args.toml_config_path)
-        setup_config = toml.load(toml_file)
+    toml_file = open(args.toml_config_path)
+    setup_config = toml.load(toml_file)
 
-        if args.input_video_path is not None:
-            setup_config['input_path'] = args.input_video_path
-        if args.output_dir_path is not None:
-            setup_config['output_dir_path'] = args.output_dir_path
-        if args.num_horizontal_pixels is not None:
-            setup_config['num_horizontal_pixels'] = args.num_horizontal_pixels
-        if args.num_vertical_pixels is not None:
-            setup_config['num_vertical_pixels'] = args.num_vertical_pixels
-        if args.num_frames is not None:
-            setup_config['num_frames'] = args.num_frames
-        if args.bit_depth is not None:
-            setup_config['bit_depth'] = args.bit_depth
-        if args.scale_factor is not None:
-            setup_config['scale_factor'] = int(args.scale_factor)
-        if args.duration is not None:
-            setup_config['duration'] = float(args.duration)
-        if args.fps is not None:
-            setup_config['fps'] = float(args.fps)
+    if args.input_video_path is not None:
+        setup_config['input_path'] = args.input_video_path
+    if args.output_dir_path is not None:
+        setup_config['output_dir_path'] = args.output_dir_path
+    if args.num_horizontal_pixels is not None:
+        setup_config['num_horizontal_pixels'] = args.num_horizontal_pixels
+    if args.num_vertical_pixels is not None:
+        setup_config['num_vertical_pixels'] = args.num_vertical_pixels
+    if args.num_frames is not None:
+        setup_config['num_frames'] = args.num_frames
+    if args.bit_depth is not None:
+        setup_config['bit_depth'] = args.bit_depth
+    if args.scale_factor is not None:
+        setup_config['scale_factor'] = int(args.scale_factor)
+    if args.duration is not None:
+        setup_config['duration'] = float(args.duration)
+    if args.fps is not None:
+        setup_config['fps'] = float(args.fps)
 
-        well_data(setup_config=setup_config)
-    except Exception as e:
-        print(f"Unhandled exception {str(e)}")
+    well_data(setup_config=setup_config)
 
     toml_file.close()
