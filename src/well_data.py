@@ -12,7 +12,7 @@ from time import time
 from typing import Dict
 
 import logging
-logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
+logging.basicConfig(format='[%(asctime)s.%(msecs)03d] [well_data] [%(levelname)s] %(message)s', level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
 log = logging.getLogger()
 
 
@@ -322,7 +322,7 @@ def roi_signal(roi_with_signal: np.ndarray) -> float:
     return np.mean(roi_with_signal)
 
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(description='Extracts signals from a multi-well microscope experiment')
     parser.add_argument(
         'toml_config_path',
@@ -401,3 +401,10 @@ if __name__ == '__main__':
     well_data(setup_config=setup_config)
 
     toml_file.close()
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except Exception as e:
+        log.error(f"Unhandled exception {str(e)}")
