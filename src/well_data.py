@@ -324,81 +324,84 @@ def roi_signal(roi_with_signal: np.ndarray) -> float:
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Extracts signals from a multi-well microscope experiment')
-    parser.add_argument(
-        'toml_config_path',
-        default=None,
-        help='Path to a toml file with run config parameters'
-    )
-    parser.add_argument(
-        '--input_video_path',
-        default=None,
-        help='Path to a video with multi-well data',
-    )
-    parser.add_argument(
-        '--output_dir_path',
-        default=None,
-        help='Path to save all output',
-    )
-    parser.add_argument(
-        '--num_horizontal_pixels',
-        default=None,
-        help='Number of horizontal pixels',
-    )
-    parser.add_argument(
-        '--num_vertical_pixels',
-        default=None,
-        help='Number of vertical pixels',
-    )
-    parser.add_argument(
-        '--num_frames',
-        default=None,
-        help='Number of frames',
-    )
-    parser.add_argument(
-        '--bit_depth',
-        default=None,
-        help='number of bits per pixel',
-    )
-    parser.add_argument(
-        '--scale_factor',
-        default=None,
-        help='Scaling factor, a 3072x2048 image has a scale factor of 1, a 1536x1024 has a scale factor of 2',
-    )
-    parser.add_argument(
-        '--duration',
-        default=None,
-        help='Duration of recording, in seconds',
-    )
-    parser.add_argument(
-        '--fps',
-        default=None,
-        help='number of frames per second',
-    )
-    args = parser.parse_args()
+    try:
+        parser = argparse.ArgumentParser(description='Extracts signals from a multi-well microscope experiment')
+        parser.add_argument(
+            'toml_config_path',
+            default=None,
+            help='Path to a toml file with run config parameters'
+        )
+        parser.add_argument(
+            '--input_video_path',
+            default=None,
+            help='Path to a video with multi-well data',
+        )
+        parser.add_argument(
+            '--output_dir_path',
+            default=None,
+            help='Path to save all output',
+        )
+        parser.add_argument(
+            '--num_horizontal_pixels',
+            default=None,
+            help='Number of horizontal pixels',
+        )
+        parser.add_argument(
+            '--num_vertical_pixels',
+            default=None,
+            help='Number of vertical pixels',
+        )
+        parser.add_argument(
+            '--num_frames',
+            default=None,
+            help='Number of frames',
+        )
+        parser.add_argument(
+            '--bit_depth',
+            default=None,
+            help='number of bits per pixel',
+        )
+        parser.add_argument(
+            '--scale_factor',
+            default=None,
+            help='Scaling factor, a 3072x2048 image has a scale factor of 1, a 1536x1024 has a scale factor of 2',
+        )
+        parser.add_argument(
+            '--duration',
+            default=None,
+            help='Duration of recording, in seconds',
+        )
+        parser.add_argument(
+            '--fps',
+            default=None,
+            help='number of frames per second',
+        )
+        args = parser.parse_args()
 
-    toml_file = open(args.toml_config_path)
-    setup_config = toml.load(toml_file)
+        toml_file = open(args.toml_config_path)
+        setup_config = toml.load(toml_file)
 
-    if args.input_video_path is not None:
-        setup_config['input_path'] = args.input_video_path
-    if args.output_dir_path is not None:
-        setup_config['output_dir_path'] = args.output_dir_path
-    if args.num_horizontal_pixels is not None:
-        setup_config['num_horizontal_pixels'] = args.num_horizontal_pixels
-    if args.num_vertical_pixels is not None:
-        setup_config['num_vertical_pixels'] = args.num_vertical_pixels
-    if args.num_frames is not None:
-        setup_config['num_frames'] = args.num_frames
-    if args.bit_depth is not None:
-        setup_config['bit_depth'] = args.bit_depth
-    if args.scale_factor is not None:
-        setup_config['scale_factor'] = int(args.scale_factor)
-    if args.duration is not None:
-        setup_config['duration'] = float(args.duration)
-    if args.fps is not None:
-        setup_config['fps'] = float(args.fps)
+        if args.input_video_path is not None:
+            setup_config['input_path'] = args.input_video_path
+        if args.output_dir_path is not None:
+            setup_config['output_dir_path'] = args.output_dir_path
+        if args.num_horizontal_pixels is not None:
+            setup_config['num_horizontal_pixels'] = args.num_horizontal_pixels
+        if args.num_vertical_pixels is not None:
+            setup_config['num_vertical_pixels'] = args.num_vertical_pixels
+        if args.num_frames is not None:
+            setup_config['num_frames'] = args.num_frames
+        if args.bit_depth is not None:
+            setup_config['bit_depth'] = args.bit_depth
+        if args.scale_factor is not None:
+            setup_config['scale_factor'] = int(args.scale_factor)
+        if args.duration is not None:
+            setup_config['duration'] = float(args.duration)
+        if args.fps is not None:
+            setup_config['fps'] = float(args.fps)
 
-    well_data(setup_config=setup_config)
+        well_data(setup_config=setup_config)
+    except Exception as e:
+        print(f"Unhandled exception {str(e)}")
 
     toml_file.close()
