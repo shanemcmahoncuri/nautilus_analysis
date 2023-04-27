@@ -6,6 +6,10 @@ from av import VideoFrame
 from nd2 import ND2File
 from image_utils import rgbConverter, rgbToGray, grayToRGB
 
+import logging
+logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
+log = logging.getLogger()
+
 
 supported_file_extensions = ['.mp4', '.avi', '.mov', '.nd2']
 # TODO: need supported reader types and supported writer types
@@ -25,7 +29,7 @@ class VideoWriter:
         path: str,
         width: int,
         height: int,
-        time_base: Fraction,        
+        time_base: Fraction,
         fps: float,
         bitrate: float,
         codec: str = None,
@@ -68,11 +72,11 @@ class VideoWriter:
         self.container = OpenVideo(self.path, mode='w')
         self.video_stream = self.container.add_stream(
             self.codec,
-            rate=str(round(self.fps, 2))  # NOTE: this must be a str (not a float) and can't be too long 
+            rate=str(round(self.fps, 2))  # NOTE: this must be a str (not a float) and can't be too long
         )
         # set some options for libx264 videos see https://trac.ffmpeg.org/wiki/Encode/H.264#crf for details
         if self.codec == 'libx264':
-            self.video_stream.options['crf'] = '1'  # higher is more lossy compression, 0 is psuedo lossless             
+            self.video_stream.options['crf'] = '1'  # higher is more lossy compression, 0 is psuedo lossless
             self.video_stream.options['preset'] = 'ultrafast'
             self.video_stream.options['tune'] = 'film'
 
@@ -97,7 +101,7 @@ class VideoWriter:
             try:
                 self.container.mux(video_packet)
             except:
-                print('Warning. an error occurred while closing the output stream. the output may be corrupt.')   
+                log.warn('An error occurred while closing the output stream. the output may be corrupt.')
         self.container.close()
 
 
@@ -124,8 +128,8 @@ class VideoReader:
 
     def _apiFromPath(self) -> str:
         self.format_apis = [
-            {'format': 'avi', 'api': 'av'}, 
-            {'format': 'mp4', 'api': 'av'}, 
+            {'format': 'avi', 'api': 'av'},
+            {'format': 'mp4', 'api': 'av'},
             {'format': 'nd2', 'api': 'nd2'}
         ]
         for video_format_api in self.format_apis:
@@ -274,7 +278,7 @@ class PYAVReader():
     def framePTS(self) -> int:
         return self.current_frame.pts
 
-    # TODO: record the first PTS so we can subtract it. 
+    # TODO: record the first PTS so we can subtract it.
     # TODO: adjust duration etc so everything is relative to 0
     #       because video doesn't like the non zero starts
 
@@ -310,7 +314,7 @@ class PYAVReader():
 
     def frameWidth(self) -> int:
         return int(self.video_stream.codec_context.width)
-    
+
     def frameHeight(self) -> int:
         return int(self.video_stream.codec_context.height)
 
@@ -436,7 +440,7 @@ class ND2VideoReader():
 
     def frameVideoPTS(self, frame_num: int = None) -> int:
         if frame_num is None:
-            frame_num = self.frame_num        
+            frame_num = self.frame_num
         return self.framePTS(frame_num) - self.framePTS(0)
 
     def timeStamp(self, frame_num: int = None) -> float:
@@ -462,7 +466,7 @@ class ND2VideoReader():
         return 'libx264'  # 'ffv1'  # 'rawvideo'
 
     def pixelFormat(self):
-        # we just return a fixed value for cases where 
+        # we just return a fixed value for cases where
         # the user wants to copy the input stream metadata
         return 'yuv420p'  # 'yuv444p'  # 'rgb24'
 
