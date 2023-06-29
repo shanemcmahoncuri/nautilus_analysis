@@ -30,14 +30,12 @@ def well_data(setup_config: Dict):
         and creates another image with time series plots of the signal data for each well.
     """
 
-    # add the roi_coordinates to the well information
-    setup_config = add_roi_coordinates_to_well_info(setup_config)
     # read image parameters
     num_horizontal_pixels = int(setup_config['num_horizontal_pixels'])
     num_vertical_pixels = int(setup_config['num_vertical_pixels'])
     num_frames = int(setup_config['num_frames'])
     bit_depth = int(setup_config['bit_depth'])
-
+    
     if(bit_depth == 8):
         pixel_np_data_type = np.uint8
         pixel_size = 1
@@ -62,7 +60,7 @@ def well_data(setup_config: Dict):
 
     # open the input stream
     log.info("Opening Video")
-
+    
     # save an image with the roi's drawn on it as quick sanity check.
     log.info("Creating ROI Sanity Check Image...")
     frame_to_draw_rois_on = np.fromfile(file=setup_config['input_path'],dtype=pixel_np_data_type,count=(num_horizontal_pixels*num_vertical_pixels ))
@@ -74,32 +72,65 @@ def well_data(setup_config: Dict):
         frame_to_draw_rois_on = frame_to_draw_rois_on * 255
         frame_to_draw_rois_on = frame_to_draw_rois_on.astype('uint8')
 
-    frame_with_rois_drawn(frame_to_draw_rois_on, setup_config['wells'], path_to_save_frame_image)
-    log.info("ROI Sanity Check Image Created")
+    
 
     # create a numpy array to store the time series of well signal values
-    num_wells = num_active_wells(setup_config['wells'])
+    num_wells = setup_config['num_wells']
     signal_values = np.empty((num_wells, num_frames), dtype=np.float32)
     x_starts = np.empty(num_wells, dtype=np.int64)
     y_starts = np.empty(num_wells, dtype=np.int64)
     x_stops = np.empty(num_wells, dtype=np.int64)
     y_stops = np.empty(num_wells, dtype=np.int64)
 
+    
     # extract ca2+ signal in each well for each frame
     log.info("Starting Signal Extraction...")
     StartTime = time()
-
-    i = 0
-    for well_name, well_info in setup_config['wells'].items():
-            if well_info['is_active']:
-                x_starts[i] = int(well_info['roi_coordinates']['upper_left']['x_pos'])
-                x_stops[i] = int(well_info['roi_coordinates']['lower_right']['x_pos'])
-                y_starts[i] = int(well_info['roi_coordinates']['upper_left']['y_pos'])
-                y_stops[i] = int(well_info['roi_coordinates']['lower_right']['y_pos'])
-                i = i + 1
- 
+    roiSize = setup_config['roiSize']
+    pixelSize = setup_config['xy_pixel_size']*setup_config['scale_factor']
+    numWellsH = setup_config['numWellsH']
+    numWellsV = setup_config['numWellsV']
+    wellSpacing = setup_config['wellSpacing']
+    frameCentersH = np.linspace(0.5, setup_config['cols']-0.5, setup_config['cols'])*setup_config['width'] + setup_config['hOffset']
+    nFramesH = setup_config['cols']
+    frameCentersV = np.linspace(0.5, setup_config['rows']-0.5, setup_config['rows'])*setup_config['height'] - setup_config['vOffset']    
+    nFramesV = setup_config['rows']
+    RowNames = ["A","B","C","D","E","F","G","H", "I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X", "Y","Z","AA","AB","AC","AD","AE","AF"]
+    wellNames = list()
+    wellRows = list()
+    wellColumns = list()
+    n=0
+    l=0
+    while(l < nFramesV):
+        frameCenterV = frameCentersV[l]
+        j = 0
+        while(j < numWellsV):
+            k = 0
+            while(k < nFramesH):
+                frameCenterH = frameCentersH[k]
+                i = 0
+                while(i < numWellsH):
+                    x_starts[n]=frameCenterH-roiSize/2 + (wellSpacing/(2*pixelSize)) - (numWellsH/2 - i) * (wellSpacing/pixelSize)
+                    x_stops[n] = x_starts[n] + roiSize
+                    y_starts[n] = frameCenterV-roiSize/2 + (wellSpacing/(2*pixelSize)) - (numWellsV/2 - j) * (wellSpacing/pixelSize)
+                    y_stops[n] = y_starts[n] + roiSize
+                    #print(f"{RowNames[numWellsV*l+j]}{(numWellsH*k+i+1)}")
+                    wellNames.append(f"{RowNames[numWellsV*l+j]}{(numWellsH*k+i+1)}")
+                    wellRows.append(numWellsV*l+j)
+                    wellColumns.append(numWellsH*k+i+1)
+                    n = n + 1
+                    i = i+1
+                k = k + 1
+            j = j +1
+        l=l+1
+    #print(wellNames)
+    setup_config['wellNames'] = wellNames
+    setup_config['wellRows'] = wellRows
+    setup_config['wellColumns'] = wellColumns
+    frame_with_rois_drawn(frame_to_draw_rois_on, x_starts, x_stops, y_starts, y_stops, path_to_save_frame_image)
+    log.info("ROI Sanity Check Image Created")
     frame_num=0
-
+    
     while (frame_num < num_frames):
         i=0
         currentFrame = np.fromfile(file=setup_config['input_path'],dtype=pixel_np_data_type ,count=int(num_horizontal_pixels*num_vertical_pixels ),offset = int(frame_num*num_horizontal_pixels*num_vertical_pixels*pixel_size))
@@ -112,48 +143,62 @@ def well_data(setup_config: Dict):
             signal_values[i, frame_num] = np.mean(currentFrame[y_start:y_end, x_start:x_end])
             i=i+1
         frame_num = frame_num + 1
-
     log.info("Signal Extraction Complete")
     StopTime = time()
     log.info(f"Processed signals in {(StopTime - StartTime)} seconds")
 
     # write each roi's time series data to an xlsx file
     log.info("Writing ROI Signals to XLSX files...")
+    StartTime = time()
     time_stamps = np.linspace(start=0, stop=setup_config['duration'], num=num_frames)
     setup_config['xlsx_output_dir_path'] = join_paths(setup_config['output_dir_path'], 'xlsx')
     make_xlsx_output_dir(xlsx_output_dir_path=setup_config['xlsx_output_dir_path'])
     signal_to_xlsx_for_sdk(signal_values, time_stamps, setup_config)
     log.info("Writing Signals to XLSX Files Complete")
+    StopTime = time()
+    log.info(f"XLSX files created in {(StopTime - StartTime)} seconds")
+
+    
+    log.info("Writing ROI Signals to CSV file...")
+    StartTime = time()
+    csvFilePath = join_paths(setup_config['output_dir_path'], 'results.csv')
+    np.savetxt(csvFilePath , signal_values, delimiter=',')
+    # write the array to a csv file with headers
+    #with open(csvFilePath, mode='w', newline='') as file:
+    #    writer = csv.writer(file)
+    #    writer.writerow(wellNames)
+    #    writer.writerows(signal_values)
+    StopTime = time()
+    log.info(f"CSV created in {(StopTime - StartTime)} seconds")
 
     # zip all the xlsx files into a single archive
     log.info("Creating Zip Archive For XLSX files...")
+    StartTime = time()
     xlsx_archive_file_path = join_paths(setup_config['output_dir_path'], 'xlsx-results.zip')
-    zip_files(input_dir_path=setup_config['xlsx_output_dir_path'], zip_file_path=xlsx_archive_file_path)
+    if (num_wells <= 1536):
+        zip_files(input_dir_path=setup_config['xlsx_output_dir_path'], zip_file_path=xlsx_archive_file_path)
     log.info("Zip Archive For XLSX files Created")
+    StopTime = time()
+    log.info(f"XLSX zipped in {(StopTime - StartTime)} seconds")
 
     # save an image with a plot of all well signals
     log.info("Creating Signal Plot Sanity Check Image...")
-    setup_config['num_well_rows'] = 0
-    setup_config['num_well_cols'] = 0
+    StartTime = time()
+    setup_config['num_well_rows'] = nFramesV * numWellsV
+    setup_config['num_well_cols'] = nFramesH * numWellsH
 
-    for well_name, well_info in setup_config['wells'].items():
-        well_grid_position = well_info['grid_position']
-        if well_grid_position['row'] > setup_config['num_well_rows']:
-            setup_config['num_well_rows'] = well_grid_position['row']
-        if well_grid_position['col'] > setup_config['num_well_cols']:
-            setup_config['num_well_cols'] = well_grid_position['col']
-
-    # grid rows and columns are 0 indexed so need to increment by 1 to get correct number
-    setup_config['num_well_rows'] += 1
-    setup_config['num_well_cols'] += 1
     plot_file_path = join_paths(setup_config['output_dir_path'], 'roi_signals_plots.png')
     signals_to_plot(signal_values, time_stamps, setup_config, plot_file_path)
     log.info("Signal Plot Sanity Check Image Created")
+    StopTime = time()
+    log.info(f"Sanity check ran in {(StopTime - StartTime)} seconds")
 
 
 def signals_to_plot(signal_values: np.ndarray, time_stamps: np.ndarray, setup_config: Dict, plot_file_path: str):
     """ Create an image with plots of time series data for multiple ROIs """
-
+    num_wells, num_data_points = signal_values.shape
+    if (num_wells > 1536):
+        return
     fig, axes = plt.subplots(
         nrows=setup_config['num_well_rows'], ncols=setup_config['num_well_cols'],
         figsize=(setup_config['num_well_cols']*3, setup_config['num_well_rows']*3),
@@ -170,16 +215,16 @@ def signals_to_plot(signal_values: np.ndarray, time_stamps: np.ndarray, setup_co
     fig.supylabel('ROI Average')
     fig.supxlabel('Time (s)')
 
-    for i, (well_name, well_info) in enumerate(setup_config['wells'].items()):
-        if not (well_info['is_active']):
-            continue
-
+    
+    i = 0
+    while (i < num_wells):
         serial_position = i
         well_signal = signal_values[serial_position, :]
-        plot_row = well_info['grid_position']['row']
-        plot_col = well_info['grid_position']['col']
+        plot_row = setup_config['wellRows'][i]
+        plot_col = setup_config['wellColumns'][i] - 1
         axes[plot_row, plot_col].plot(time_stamps, well_signal)
-        axes[plot_row, plot_col].set_title(well_name)
+        axes[plot_row, plot_col].set_title(setup_config['wellNames'][i])
+        i = i + 1
 
     plt.savefig(plot_file_path)
 
@@ -197,6 +242,8 @@ def signal_to_xlsx_for_sdk(signal_values: np.ndarray, time_stamps: np.ndarray, s
     """ writes time series data to xlsx files for multiple ROIs """
 
     num_wells, num_data_points = signal_values.shape
+    if (num_wells > 1536):
+        return
     frames_per_second = setup_config['fps']
     date_stamp = setup_config['recording_date']
     output_dir = setup_config['xlsx_output_dir_path']
@@ -205,107 +252,56 @@ def signal_to_xlsx_for_sdk(signal_values: np.ndarray, time_stamps: np.ndarray, s
         well_plate_barcode = setup_config['barcode']
     else:
         well_plate_barcode = 'NA'
-    for i, (well_name, well_info) in enumerate(setup_config['wells'].items()):
-        if not (well_info['is_active']):
-            continue
-
+    i = 0
+    while (i < num_wells):
+        #print(i)
+        well_name = setup_config['wellNames'][i]
         workbook = openpyxl.Workbook()
         sheet = workbook.active
-
-        # add meta data
-        sheet['E2'] = well_name
+        sheet['E2'] = well_name 
         sheet['E3'] = date_stamp
         sheet['E4'] = well_plate_barcode
         sheet['E5'] = frames_per_second
         sheet['E6'] = 'y'  # do twitch's point up
         sheet['E7'] = 'NAUTILUS'  # microscope name
-
-        # add runtime data (time, displacement etc)
         template_start_row = 2
         time_column = 'A'
         signal_column = 'B'
         well_data_row = i
-
         for data_point_position in range(num_data_points):
             sheet_row = str(data_point_position + template_start_row)
             sheet[time_column + sheet_row] = time_stamps[data_point_position]
             sheet[signal_column + sheet_row] = signal_values[well_data_row, data_point_position]
-
         path_to_output_file = join_paths(output_dir, well_name + '.xlsx')
         workbook.save(filename=path_to_output_file)
         workbook.close()
+        i = i + 1
 
-
-def frame_with_rois_drawn(frame_to_draw_on: np.ndarray, wells_info: Dict, path_to_save_frame_image: str):
-    """ Draw multiple ROIs on one frame image """
-    green_line_colour_bgr = (0, 255, 0)
-    for _, well_info in wells_info.items():
-        top_left = (
-            int(well_info['roi_coordinates']['upper_left']['x_pos']),
-            int(well_info['roi_coordinates']['upper_left']['y_pos'])
-        )
-        lower_right = (
-            int(well_info['roi_coordinates']['lower_right']['x_pos']),
-            int(well_info['roi_coordinates']['lower_right']['y_pos']),
-        )
-        cv.rectangle(
-            img=frame_to_draw_on,
-            pt1=top_left,
-            pt2=lower_right,
-            color=green_line_colour_bgr,
-            thickness=1,
-            lineType=cv.LINE_AA
-        )
-    cv.imwrite(path_to_save_frame_image, frame_to_draw_on)
-
-
-def num_active_wells(wells: Dict) -> int:
-    """ returns the count of wells marked as active """
-    active_well_count = 0
-    for _, well_info in wells.items():
-        if well_info['is_active']:
-            active_well_count += 1
-    return active_well_count
-
-
-def well_roi_coordinates(well_info: Dict, roi_info: Dict, scale_factor: float) -> Dict:
-    """ returns a dictionary with coordinates of the roi """
-
-    # NOTE: initially we will only return a 2D rectangular roi
-    #       we also don't check for going outside the image
-
-    roi_x_radius = roi_info['width']/2.0
-    roi_y_radius = roi_info['height']/2.0
-    # NOTE: images are stored "upside down", so upper visually is lower in coordinates,
-    #       hence the minus y radius for upper and plus y radius for lower
-    return {
-        'upper_left': {
-            'x_pos': (well_info['center_coordinates']['x_pos'] - roi_x_radius)/scale_factor,
-            'y_pos': (well_info['center_coordinates']['y_pos'] - roi_y_radius)/scale_factor
-        },
-        'upper_right': {
-            'x_pos': (well_info['center_coordinates']['x_pos'] + roi_x_radius)/scale_factor,
-            'y_pos': (well_info['center_coordinates']['y_pos'] - roi_y_radius)/scale_factor
-        },
-        'lower_left': {
-            'x_pos': (well_info['center_coordinates']['x_pos'] - roi_x_radius)/scale_factor,
-            'y_pos': (well_info['center_coordinates']['y_pos'] + roi_y_radius)/scale_factor
-        },
-        'lower_right': {
-            'x_pos': (well_info['center_coordinates']['x_pos'] + roi_x_radius)/scale_factor,
-            'y_pos': (well_info['center_coordinates']['y_pos'] + roi_y_radius)/scale_factor
-        }
-    }
-
-
-def add_roi_coordinates_to_well_info(setup_config: Dict) -> Dict:
-    new_setup_config = setup_config.copy()
-    scale_factor = new_setup_config['scale_factor']
-    for _, well_info in new_setup_config['wells'].items():
-        well_info['roi_coordinates'] = well_roi_coordinates(well_info, setup_config['roi'], scale_factor)
-    return new_setup_config
-
-
+def frame_with_rois_drawn(frame_to_draw_on: np.ndarray,x_starts: np.ndarray,x_stops: np.ndarray,y_starts: np.ndarray,y_stops: np.ndarray, path_to_save_frame_image: str):
+  """ Draw multiple ROIs on one frame image """
+  i = 0
+  green_line_colour_bgr = (0, 255, 0)
+  while(i < x_starts.size):  
+      top_left = (
+          int(x_starts[i]),
+          int(y_starts[i])
+      )
+      lower_right = (
+          int(x_stops[i]),
+          int(y_stops[i])
+          
+      )
+      cv.rectangle(
+          img=frame_to_draw_on,
+          pt1=top_left,
+          pt2=lower_right,
+          color=green_line_colour_bgr,
+          thickness=1,
+          lineType=cv.LINE_AA
+      )
+      i = i + 1
+  cv.imwrite(path_to_save_frame_image, frame_to_draw_on)
+  
 def make_output_dir(output_dir_path: str):
     """ create the main output dir """
     if not isdir(output_dir_path):
@@ -318,11 +314,9 @@ def make_xlsx_output_dir(xlsx_output_dir_path: str):
         makedirs(name=xlsx_output_dir_path, exist_ok=False)
 
 
-def roi_signal(roi_with_signal: np.ndarray) -> float:
-    return np.mean(roi_with_signal)
-
 
 def main():
+    
     parser = argparse.ArgumentParser(description='Extracts signals from a multi-well microscope experiment')
     parser.add_argument(
         'toml_config_path',
@@ -376,8 +370,12 @@ def main():
     )
     args = parser.parse_args()
 
+    
+    #print(args.toml_config_path)
     toml_file = open(args.toml_config_path)
     setup_config = toml.load(toml_file)
+
+    
 
     if args.input_video_path is not None:
         setup_config['input_path'] = args.input_video_path
@@ -397,7 +395,6 @@ def main():
         setup_config['duration'] = float(args.duration)
     if args.fps is not None:
         setup_config['fps'] = float(args.fps)
-
     well_data(setup_config=setup_config)
 
     toml_file.close()
