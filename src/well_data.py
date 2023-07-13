@@ -30,11 +30,23 @@ def well_data(setup_config: Dict):
         and creates another image with time series plots of the signal data for each well.
     """
 
-    # read image parameters
+    # read image parameters and declare variables
     num_horizontal_pixels = int(setup_config['num_horizontal_pixels'])
     num_vertical_pixels = int(setup_config['num_vertical_pixels'])
     num_frames = int(setup_config['num_frames'])
     bit_depth = int(setup_config['bit_depth'])
+    numWellsH = setup_config['numWellsH']
+    numWellsV = setup_config['numWellsV']
+    nFramesH = setup_config['cols']
+    nFramesV = setup_config['rows']
+    setup_config['num_well_rows'] = nFramesV * numWellsV
+    setup_config['num_well_cols'] = nFramesH * numWellsH
+    num_wells = setup_config['num_wells']
+    signal_values = np.empty((num_wells, num_frames), dtype=np.float32)
+
+    #generate ROIs from settings.toml parameters
+    x_starts, x_stops, y_starts, y_stops = make_rois(setup_config)
+
     
     if(bit_depth == 8):
         pixel_np_data_type = np.uint8
@@ -52,50 +64,124 @@ def well_data(setup_config: Dict):
         log.error(f"{bit_depth} bit images are not supported")
         return(1)
 
-    #Check to see if the file size is correct based on the values of num_horizontal_pixels, num_vertical_pixels, num_frames, pixel_size, i.e. the file size should be num_horizontal_pixels*num_vertical_pixels*num_frames*pixel_size bytes
+    #TODO: Check to see if the file size is correct based on the values of num_horizontal_pixels, num_vertical_pixels, num_frames, pixel_size, i.e. the file size should be num_horizontal_pixels*num_vertical_pixels*num_frames*pixel_size bytes
 
     # safely create the output dir if it does not exist
     log.info("Creating Output Dir")
-    make_output_dir(setup_config['output_dir_path'])
+    if not isdir(setup_config['output_dir_path']):
+        makedirs(name=setup_config['output_dir_path'], exist_ok=False)
 
-    # open the input stream
-    log.info("Opening Video")
     
     # save an image with the roi's drawn on it as quick sanity check.
     log.info("Creating ROI Sanity Check Image...")
     frame_to_draw_rois_on = np.fromfile(file=setup_config['input_path'],dtype=pixel_np_data_type,count=(num_horizontal_pixels*num_vertical_pixels ))
     frame_to_draw_rois_on  = frame_to_draw_rois_on.reshape(num_vertical_pixels ,num_horizontal_pixels)
     path_to_save_frame_image = join_paths(setup_config['output_dir_path'], 'roi_locations.png')
-
     if (pixel_size == 2):
         frame_to_draw_rois_on = frame_to_draw_rois_on/(frame_to_draw_rois_on.max())
         frame_to_draw_rois_on = frame_to_draw_rois_on * 255
         frame_to_draw_rois_on = frame_to_draw_rois_on.astype('uint8')
+    frame_with_rois_drawn(frame_to_draw_rois_on, x_starts, x_stops, y_starts, y_stops, path_to_save_frame_image)
+    log.info("ROI Sanity Check Image Created")
 
+    # extract ca2+ signal in each well for each frame
+    """
+    Extracts signals from multi-well microscope data and stores each wells signal data as a separate xlsx file.
+    Creates an image with all the roi's drawn on one frame & creates an image with signal plots for each well.
+    """
+    log.info("Starting Signal Extraction...")
+    StartTime = time()
     
 
-    # create a numpy array to store the time series of well signal values
+
+
+    frame_num=0
+    
+    while (frame_num < num_frames):
+        i=0
+        currentFrame = np.fromfile(file=setup_config['input_path'],dtype=pixel_np_data_type ,count=int(num_horizontal_pixels*num_vertical_pixels ),offset = int(frame_num*num_horizontal_pixels*num_vertical_pixels*pixel_size))
+        currentFrame = currentFrame.reshape(num_vertical_pixels ,num_horizontal_pixels)
+        while (i < num_wells):
+            x_start = x_starts[i]
+            x_end = x_stops[i]
+            y_start = y_starts[i]
+            y_end = y_stops[i]
+            signal_values[i, frame_num] = np.mean(currentFrame[y_start:y_end, x_start:x_end])
+            i=i+1
+        frame_num = frame_num + 1
+    log.info("Signal Extraction Complete")
+    StopTime = time()
+    log.info(f"Processed signals in {(StopTime - StartTime)} seconds")
+
+    # write each roi's time series data to an xlsx file
+    if setup_config['save_exel']:
+        save_excel_files(signal_values = signal_values, setup_config=setup_config)
+        
+    log.info("Writing ROI Signals to CSV file...")
+    StartTime = time()
+    csvFilePath = join_paths(setup_config['output_dir_path'], 'results.csv')
+    signal_values_t = signal_values.transpose()
+    np.savetxt(csvFilePath , signal_values_t, delimiter=',')
+    StopTime = time()
+    log.info(f"CSV created in {(StopTime - StartTime)} seconds")
+    
+    if setup_config['save_plots']:
+        signals_to_plot(signal_values, setup_config)
+     
+
+
+
+
+
+
+"""
+
+Handles some logistics for saving excel files
+
+"""
+def save_excel_files(signal_values: np.ndarray, setup_config: Dict):
+    log.info("Writing ROI Signals to XLSX files...")
+    StartTime = time()
+    time_stamps = np.linspace(start=0, stop=setup_config['duration'], num=setup_config['num_frames'])
+    setup_config['xlsx_output_dir_path'] = join_paths(setup_config['output_dir_path'], 'xlsx')
+    if not isdir(setup_config['xlsx_output_dir_path']):
+        makedirs(name=setup_config['xlsx_output_dir_path'], exist_ok=False)
+    #make_xlsx_output_dir(xlsx_output_dir_path=setup_config['xlsx_output_dir_path'])
+    signal_to_xlsx_for_sdk(signal_values = signal_values, time_stamps = time_stamps, setup_config = setup_config)
+    log.info("Writing Signals to XLSX Files Complete")
+    StopTime = time()
+    log.info(f"XLSX files created in {(StopTime - StartTime)} seconds")
+    # zip all the xlsx files into a single archive
+    log.info("Creating Zip Archive For XLSX files...")
+    StartTime = time()
+    xlsx_archive_file_path = join_paths(setup_config['output_dir_path'], 'xlsx-results.zip')
+    zip_files(input_dir_path=setup_config['xlsx_output_dir_path'], zip_file_path=xlsx_archive_file_path)
+    log.info("Zip Archive For XLSX files Created")
+    StopTime = time()
+    log.info(f"XLSX zipped in {(StopTime - StartTime)} seconds")
+
+"""
+
+Graphs time series data for each well
+
+"""
+
+def make_rois(setup_config: Dict):
+    frameCentersH = np.linspace(0.5, setup_config['cols']-0.5, setup_config['cols'])*setup_config['width'] + setup_config['hOffset']
+    frameCentersV = np.linspace(0.5, setup_config['rows']-0.5, setup_config['rows'])*setup_config['height'] - setup_config['vOffset']
+    nFramesH = setup_config['cols']
+    nFramesV = setup_config['rows']
+    numWellsH = setup_config['numWellsH']
+    numWellsV = setup_config['numWellsV']
     num_wells = setup_config['num_wells']
-    signal_values = np.empty((num_wells, num_frames), dtype=np.float32)
+    pixelSize = setup_config['xy_pixel_size']*setup_config['scale_factor']
+    roiSize = setup_config['roiSize']
+    RowNames = ["A","B","C","D","E","F","G","H", "I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X", "Y","Z","AA","AB","AC","AD","AE","AF"]
+    wellSpacing = setup_config['wellSpacing']
     x_starts = np.empty(num_wells, dtype=np.int64)
     y_starts = np.empty(num_wells, dtype=np.int64)
     x_stops = np.empty(num_wells, dtype=np.int64)
     y_stops = np.empty(num_wells, dtype=np.int64)
-
-    
-    # extract ca2+ signal in each well for each frame
-    log.info("Starting Signal Extraction...")
-    StartTime = time()
-    roiSize = setup_config['roiSize']
-    pixelSize = setup_config['xy_pixel_size']*setup_config['scale_factor']
-    numWellsH = setup_config['numWellsH']
-    numWellsV = setup_config['numWellsV']
-    wellSpacing = setup_config['wellSpacing']
-    frameCentersH = np.linspace(0.5, setup_config['cols']-0.5, setup_config['cols'])*setup_config['width'] + setup_config['hOffset']
-    nFramesH = setup_config['cols']
-    frameCentersV = np.linspace(0.5, setup_config['rows']-0.5, setup_config['rows'])*setup_config['height'] - setup_config['vOffset']    
-    nFramesV = setup_config['rows']
-    RowNames = ["A","B","C","D","E","F","G","H", "I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X", "Y","Z","AA","AB","AC","AD","AE","AF"]
     wellNames = list()
     wellRows = list()
     wellColumns = list()
@@ -123,82 +209,25 @@ def well_data(setup_config: Dict):
                 k = k + 1
             j = j +1
         l=l+1
-    #print(wellNames)
+    setup_config['x_starts'] = x_starts
+    setup_config['x_stops'] = x_stops
+    setup_config['y_starts'] = y_starts
+    setup_config['y_stops'] = y_stops
     setup_config['wellNames'] = wellNames
     setup_config['wellRows'] = wellRows
     setup_config['wellColumns'] = wellColumns
-    frame_with_rois_drawn(frame_to_draw_rois_on, x_starts, x_stops, y_starts, y_stops, path_to_save_frame_image)
-    log.info("ROI Sanity Check Image Created")
-    frame_num=0
-    
-    while (frame_num < num_frames):
-        i=0
-        currentFrame = np.fromfile(file=setup_config['input_path'],dtype=pixel_np_data_type ,count=int(num_horizontal_pixels*num_vertical_pixels ),offset = int(frame_num*num_horizontal_pixels*num_vertical_pixels*pixel_size))
-        currentFrame = currentFrame.reshape(num_vertical_pixels ,num_horizontal_pixels)
-        while (i < num_wells):
-            x_start = x_starts[i]
-            x_end = x_stops[i]
-            y_start = y_starts[i]
-            y_end = y_stops[i]
-            signal_values[i, frame_num] = np.mean(currentFrame[y_start:y_end, x_start:x_end])
-            i=i+1
-        frame_num = frame_num + 1
-    log.info("Signal Extraction Complete")
-    StopTime = time()
-    log.info(f"Processed signals in {(StopTime - StartTime)} seconds")
+    return x_starts, x_stops, y_starts, y_stops
 
-    # write each roi's time series data to an xlsx file
-    log.info("Writing ROI Signals to XLSX files...")
-    StartTime = time()
-    time_stamps = np.linspace(start=0, stop=setup_config['duration'], num=num_frames)
-    setup_config['xlsx_output_dir_path'] = join_paths(setup_config['output_dir_path'], 'xlsx')
-    make_xlsx_output_dir(xlsx_output_dir_path=setup_config['xlsx_output_dir_path'])
-    signal_to_xlsx_for_sdk(signal_values, time_stamps, setup_config)
-    log.info("Writing Signals to XLSX Files Complete")
-    StopTime = time()
-    log.info(f"XLSX files created in {(StopTime - StartTime)} seconds")
-
-    
-    log.info("Writing ROI Signals to CSV file...")
-    StartTime = time()
-    csvFilePath = join_paths(setup_config['output_dir_path'], 'results.csv')
-    np.savetxt(csvFilePath , signal_values, delimiter=',')
-    # write the array to a csv file with headers
-    #with open(csvFilePath, mode='w', newline='') as file:
-    #    writer = csv.writer(file)
-    #    writer.writerow(wellNames)
-    #    writer.writerows(signal_values)
-    StopTime = time()
-    log.info(f"CSV created in {(StopTime - StartTime)} seconds")
-
-    # zip all the xlsx files into a single archive
-    log.info("Creating Zip Archive For XLSX files...")
-    StartTime = time()
-    xlsx_archive_file_path = join_paths(setup_config['output_dir_path'], 'xlsx-results.zip')
-    if (num_wells <= 1536):
-        zip_files(input_dir_path=setup_config['xlsx_output_dir_path'], zip_file_path=xlsx_archive_file_path)
-    log.info("Zip Archive For XLSX files Created")
-    StopTime = time()
-    log.info(f"XLSX zipped in {(StopTime - StartTime)} seconds")
-
-    # save an image with a plot of all well signals
-    log.info("Creating Signal Plot Sanity Check Image...")
-    StartTime = time()
-    setup_config['num_well_rows'] = nFramesV * numWellsV
-    setup_config['num_well_cols'] = nFramesH * numWellsH
-
-    plot_file_path = join_paths(setup_config['output_dir_path'], 'roi_signals_plots.png')
-    signals_to_plot(signal_values, time_stamps, setup_config, plot_file_path)
-    log.info("Signal Plot Sanity Check Image Created")
-    StopTime = time()
-    log.info(f"Sanity check ran in {(StopTime - StartTime)} seconds")
-
-
-def signals_to_plot(signal_values: np.ndarray, time_stamps: np.ndarray, setup_config: Dict, plot_file_path: str):
+def signals_to_plot(signal_values: np.ndarray, setup_config: Dict):
     """ Create an image with plots of time series data for multiple ROIs """
+    StartTime = time()
+    log.info("Creating Signal Plot Sanity Check Image...")
+    time_stamps = np.linspace(start=0, stop=setup_config['duration'], num=setup_config['num_frames'])
     num_wells, num_data_points = signal_values.shape
-    if (num_wells > 1536):
-        return
+    #setup_config['num_well_rows'] = nFramesV * numWellsV
+    #setup_config['num_well_cols'] = nFramesH * numWellsH
+    plot_file_path = join_paths(setup_config['output_dir_path'], 'roi_signals_plots.svg')
+
     fig, axes = plt.subplots(
         nrows=setup_config['num_well_rows'], ncols=setup_config['num_well_cols'],
         figsize=(setup_config['num_well_cols']*3, setup_config['num_well_rows']*3),
@@ -227,8 +256,15 @@ def signals_to_plot(signal_values: np.ndarray, time_stamps: np.ndarray, setup_co
         i = i + 1
 
     plt.savefig(plot_file_path)
+    log.info("Signal Plot Sanity Check Image Created")
+    StopTime = time()
+    log.info(f"Sanity check ran in {(StopTime - StartTime)} seconds")
 
+"""
 
+zips input directory
+
+"""
 def zip_files(input_dir_path: str, zip_file_path: str):
     zip_file = zipfile.ZipFile(zip_file_path, 'w')
     for dir_name, _, file_names in dir_ls(input_dir_path):
@@ -237,13 +273,15 @@ def zip_files(input_dir_path: str, zip_file_path: str):
             zip_file.write(file_path, basename(file_path))
     zip_file.close()
 
+"""
 
+saves time series data as excel files
+
+"""
 def signal_to_xlsx_for_sdk(signal_values: np.ndarray, time_stamps: np.ndarray, setup_config: Dict):
     """ writes time series data to xlsx files for multiple ROIs """
 
     num_wells, num_data_points = signal_values.shape
-    if (num_wells > 1536):
-        return
     frames_per_second = setup_config['fps']
     date_stamp = setup_config['recording_date']
     output_dir = setup_config['xlsx_output_dir_path']
@@ -302,18 +340,10 @@ def frame_with_rois_drawn(frame_to_draw_on: np.ndarray,x_starts: np.ndarray,x_st
       i = i + 1
   cv.imwrite(path_to_save_frame_image, frame_to_draw_on)
   
-def make_output_dir(output_dir_path: str):
-    """ create the main output dir """
-    if not isdir(output_dir_path):
-        makedirs(name=output_dir_path, exist_ok=False)
-
-
-def make_xlsx_output_dir(xlsx_output_dir_path: str):
-    """ create a subdir for xlsx files """
-    if not isdir(xlsx_output_dir_path):
-        makedirs(name=xlsx_output_dir_path, exist_ok=False)
-
-
+#def make_output_dir(output_dir_path: str):
+#    """ create the main output dir """
+#    if not isdir(output_dir_path):
+#        makedirs(name=output_dir_path, exist_ok=False)
 
 def main():
     
@@ -395,6 +425,14 @@ def main():
         setup_config['duration'] = float(args.duration)
     if args.fps is not None:
         setup_config['fps'] = float(args.fps)
+    
+    if 'save_excel' not in setup_config:
+        setup_config['save_exel'] = True
+    if 'save_plots' not in setup_config:
+        setup_config['save_plots'] = True
+    if 'fluorescence_normalization' not in setup_config:
+        setup_config['fluorescence_normalization'] = 'None'
+        
     well_data(setup_config=setup_config)
 
     toml_file.close()
