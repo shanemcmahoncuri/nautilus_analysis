@@ -91,12 +91,7 @@ def well_data(setup_config: Dict):
     """
     log.info("Starting Signal Extraction...")
     StartTime = time()
-    
-
-
-
     frame_num=0
-    
     while (frame_num < num_frames):
         i=0
         currentFrame = np.fromfile(file=setup_config['input_path'],dtype=pixel_np_data_type ,count=int(num_horizontal_pixels*num_vertical_pixels ),offset = int(frame_num*num_horizontal_pixels*num_vertical_pixels*pixel_size))
@@ -427,7 +422,7 @@ def main():
         setup_config['fps'] = float(args.fps)
     
     if 'save_excel' not in setup_config:
-        setup_config['save_exel'] = True
+        setup_config['save_exel'] = False
     if 'save_plots' not in setup_config:
         setup_config['save_plots'] = True
     if 'fluorescence_normalization' not in setup_config:
