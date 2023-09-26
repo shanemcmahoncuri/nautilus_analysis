@@ -142,4 +142,4 @@ test_data/Costar96wP16bit.raw
 test_data/Costar96wP.raw
 test_data/default__2023_04_21_192852.raw
 
-.vs/*
+.vs/
