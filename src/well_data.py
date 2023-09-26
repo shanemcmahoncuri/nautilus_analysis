@@ -35,13 +35,13 @@ def well_data(setup_config: Dict):
     num_vertical_pixels = int(setup_config['num_vertical_pixels'])
     num_frames = int(setup_config['num_frames'])
     bit_depth = int(setup_config['bit_depth'])
-    numWellsH = setup_config['numWellsH']
-    numWellsV = setup_config['numWellsV']
+    numWellsH = setup_config['stage']['numWellsH']
+    numWellsV = setup_config['stage']['numWellsV']
     nFramesH = setup_config['cols']
     nFramesV = setup_config['rows']
     setup_config['num_well_rows'] = nFramesV * numWellsV
     setup_config['num_well_cols'] = nFramesH * numWellsH
-    num_wells = setup_config['num_wells']
+    num_wells = setup_config['stage']['num_wells']
     signal_values = np.empty((num_wells, num_frames), dtype=np.float32)
 
     #generate ROIs from settings.toml parameters
@@ -162,17 +162,17 @@ Graphs time series data for each well
 """
 
 def make_rois(setup_config: Dict):
-    frameCentersH = np.linspace(0.5, setup_config['cols']-0.5, setup_config['cols'])*setup_config['width'] + setup_config['hOffset']
-    frameCentersV = np.linspace(0.5, setup_config['rows']-0.5, setup_config['rows'])*setup_config['height'] - setup_config['vOffset']
+    frameCentersH = np.linspace(0.5, setup_config['cols']-0.5, setup_config['cols'])*setup_config['width'] + setup_config['stage']['hOffset']
+    frameCentersV = np.linspace(0.5, setup_config['rows']-0.5, setup_config['rows'])*setup_config['height'] - setup_config['stage']['vOffset']
     nFramesH = setup_config['cols']
     nFramesV = setup_config['rows']
-    numWellsH = setup_config['numWellsH']
-    numWellsV = setup_config['numWellsV']
-    num_wells = setup_config['num_wells']
+    numWellsH = setup_config['stage']['numWellsH']
+    numWellsV = setup_config['stage']['numWellsV']
+    num_wells = setup_config['stage']['num_wells']
     pixelSize = setup_config['xy_pixel_size']*setup_config['scale_factor']
-    roiSize = setup_config['roiSize']
+    roiSize = setup_config['stage']['roiSize']
     RowNames = ["A","B","C","D","E","F","G","H", "I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X", "Y","Z","AA","AB","AC","AD","AE","AF"]
-    wellSpacing = setup_config['wellSpacing']
+    wellSpacing = setup_config['stage']['wellSpacing']
     x_starts = np.empty(num_wells, dtype=np.int64)
     y_starts = np.empty(num_wells, dtype=np.int64)
     x_stops = np.empty(num_wells, dtype=np.int64)
@@ -429,6 +429,7 @@ def main():
     if 'fluorescence_normalization' not in setup_config:
         setup_config['fluorescence_normalization'] = 'None'
         
+    
     well_data(setup_config=setup_config)
 
     toml_file.close()
