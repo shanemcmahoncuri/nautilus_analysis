@@ -423,11 +423,11 @@ def main():
         setup_config['fps'] = float(args.fps)
     
     if 'save_excel' not in setup_config['stage']:
-        setup_config['stage']['save_excel'] = False
+        setup_config['stage']['save_excel'] = True
     if 'save_plots' not in setup_config:
         setup_config['save_plots'] = True
     if 'plot_format' not in setup_config:
-        setup_config['plot_format'] = 'svg'
+        setup_config['plot_format'] = 'png'
     if 'fluorescence_normalization' not in setup_config:
         setup_config['fluorescence_normalization'] = 'None'
         
