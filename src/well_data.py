@@ -109,7 +109,7 @@ def well_data(setup_config: Dict):
     log.info(f"Processed signals in {(StopTime - StartTime)} seconds")
 
     # write each roi's time series data to an xlsx file
-    if setup_config['save_exel']:
+    if setup_config['stage']['save_excel']:
         save_excel_files(signal_values = signal_values, setup_config=setup_config)
         
     log.info("Writing ROI Signals to CSV file...")
@@ -221,7 +221,7 @@ def signals_to_plot(signal_values: np.ndarray, setup_config: Dict):
     num_wells, num_data_points = signal_values.shape
     #setup_config['num_well_rows'] = nFramesV * numWellsV
     #setup_config['num_well_cols'] = nFramesH * numWellsH
-    plot_file_path = join_paths(setup_config['output_dir_path'], 'roi_signals_plots.svg')
+    plot_file_path = join_paths(setup_config['output_dir_path'], 'roi_signals_plots.' + setup_config['plot_format'])
 
     fig, axes = plt.subplots(
         nrows=setup_config['num_well_rows'], ncols=setup_config['num_well_cols'],
@@ -422,10 +422,12 @@ def main():
     if args.fps is not None:
         setup_config['fps'] = float(args.fps)
     
-    if 'save_excel' not in setup_config:
-        setup_config['save_exel'] = False
+    if 'save_excel' not in setup_config['stage']:
+        setup_config['stage']['save_excel'] = False
     if 'save_plots' not in setup_config:
         setup_config['save_plots'] = True
+    if 'plot_format' not in setup_config:
+        setup_config['plot_format'] = 'svg'
     if 'fluorescence_normalization' not in setup_config:
         setup_config['fluorescence_normalization'] = 'None'
         

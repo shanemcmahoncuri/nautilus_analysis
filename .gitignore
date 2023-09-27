@@ -143,3 +143,5 @@ test_data/Costar96wP.raw
 test_data/default__2023_04_21_192852.raw
 
 .vs/
+.vs/slnx.sqlite
+.vs/nautilus_analysis/FileContentIndex/858d92db-8d2b-4b21-9ccf-ff9e95c04ca5.vsidx
