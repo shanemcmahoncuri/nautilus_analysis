@@ -298,6 +298,7 @@ def signal_to_xlsx_for_sdk(signal_values: np.ndarray, time_stamps: np.ndarray, s
         sheet['E5'] = frames_per_second
         sheet['E6'] = 'y'  # do twitch's point up
         sheet['E7'] = 'NAUTILUS'  # microscope name
+        sheet['E9'] = data_type # voltage or calcium imaging
         template_start_row = 2
         time_column = 'A'
         signal_column = 'B'
