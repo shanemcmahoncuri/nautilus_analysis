@@ -170,7 +170,9 @@ def make_rois(setup_config: Dict):
     numWellsV = setup_config['stage']['numWellsV']
     num_wells = setup_config['stage']['num_wells']
     pixelSize = setup_config['xy_pixel_size']*setup_config['scale_factor']
-    roiSize = setup_config['stage']['roiSize']
+    #roiSize = setup_config['stage']['roiSize']
+    roiSizeX = setup_config['stage']['roiSizeX']
+    roiSizeY = setup_config['stage']['roiSizeY']
     RowNames = ["A","B","C","D","E","F","G","H", "I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X", "Y","Z","AA","AB","AC","AD","AE","AF"]
     wellSpacing = setup_config['stage']['wellSpacing']
     x_starts = np.empty(num_wells, dtype=np.int64)
@@ -191,10 +193,14 @@ def make_rois(setup_config: Dict):
                 frameCenterH = frameCentersH[k]
                 i = 0
                 while(i < numWellsH):
-                    x_starts[n]=frameCenterH-roiSize/2 + (wellSpacing/(2*pixelSize)) - (numWellsH/2 - i) * (wellSpacing/pixelSize)
-                    x_stops[n] = x_starts[n] + roiSize
-                    y_starts[n] = frameCenterV-roiSize/2 + (wellSpacing/(2*pixelSize)) - (numWellsV/2 - j) * (wellSpacing/pixelSize)
-                    y_stops[n] = y_starts[n] + roiSize
+                    #x_starts[n]=frameCenterH-roiSize/2 + (wellSpacing/(2*pixelSize)) - (numWellsH/2 - i) * (wellSpacing/pixelSize)
+                    x_starts[n]=frameCenterH-roiSizeX/2 + (wellSpacing/(2*pixelSize)) - (numWellsH/2 - i) * (wellSpacing/pixelSize)
+                    #x_stops[n] = x_starts[n] + roiSize
+                    x_stops[n] = x_starts[n] + roiSizeX
+                    #y_starts[n] = frameCenterV-roiSize/2 + (wellSpacing/(2*pixelSize)) - (numWellsV/2 - j) * (wellSpacing/pixelSize)
+                    y_starts[n] = frameCenterV-roiSizeY/2 + (wellSpacing/(2*pixelSize)) - (numWellsV/2 - j) * (wellSpacing/pixelSize)
+                    #y_stops[n] = y_starts[n] + roiSize
+                    y_stops[n] = y_starts[n] + roiSizeY
                     #print(f"{RowNames[numWellsV*l+j]}{(numWellsH*k+i+1)}")
                     wellNames.append(f"{RowNames[numWellsV*l+j]}{(numWellsH*k+i+1)}")
                     wellRows.append(numWellsV*l+j)
