@@ -154,3 +154,5 @@ test_data/default__2023_04_21_192852.raw
 .vs/slnx.sqlite
 .vs/VSWorkspaceState.json
 *.vsidx
+*.sqlite
+*.json
