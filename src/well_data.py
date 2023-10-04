@@ -322,6 +322,12 @@ def frame_with_rois_drawn(frame_to_draw_on: np.ndarray,x_starts: np.ndarray,x_st
   """ Draw multiple ROIs on one frame image """
   i = 0
   green_line_colour_bgr = (0, 255, 0)
+  #frame_to_draw_on = asUINT8(frame_to_draw_on)
+  frame_min = np.min(frame_to_draw_on)
+  frame_max = np.max(frame_to_draw_on)
+  frame_range = frame_max - frame_min
+  frame_to_draw_on = np.uint8(255.0*(frame_to_draw_on - frame_min)/frame_range)
+  frame_to_draw_on = np.stack((frame_to_draw_on, frame_to_draw_on, frame_to_draw_on), axis=-1)
   while(i < x_starts.size):  
       top_left = (
           int(x_starts[i]),
