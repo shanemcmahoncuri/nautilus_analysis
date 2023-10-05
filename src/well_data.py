@@ -10,6 +10,7 @@ from os import makedirs, walk as dir_ls
 from os.path import isdir, basename, join as join_paths
 from time import time
 from typing import Dict
+from PIL import Image, ImageDraw, ImageFont
 
 import logging
 logging.basicConfig(format='[%(asctime)s.%(msecs)03d] [well_data] [%(levelname)s] %(message)s', level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
@@ -74,14 +75,15 @@ def well_data(setup_config: Dict):
     
     # save an image with the roi's drawn on it as quick sanity check.
     log.info("Creating ROI Sanity Check Image...")
-    frame_to_draw_rois_on = np.fromfile(file=setup_config['input_path'],dtype=pixel_np_data_type,count=(num_horizontal_pixels*num_vertical_pixels ))
+    frame_num = 1
+    frame_to_draw_rois_on = np.fromfile(file=setup_config['input_path'],dtype=pixel_np_data_type,count=(num_horizontal_pixels*num_vertical_pixels ),offset = int(frame_num*num_horizontal_pixels*num_vertical_pixels*pixel_size))
     frame_to_draw_rois_on  = frame_to_draw_rois_on.reshape(num_vertical_pixels ,num_horizontal_pixels)
     path_to_save_frame_image = join_paths(setup_config['output_dir_path'], 'roi_locations.png')
     if (pixel_size == 2):
         frame_to_draw_rois_on = frame_to_draw_rois_on/(frame_to_draw_rois_on.max())
         frame_to_draw_rois_on = frame_to_draw_rois_on * 255
         frame_to_draw_rois_on = frame_to_draw_rois_on.astype('uint8')
-    frame_with_rois_drawn(frame_to_draw_rois_on, x_starts, x_stops, y_starts, y_stops, path_to_save_frame_image)
+    frame_with_rois_drawn(frame_to_draw_rois_on, x_starts, x_stops, y_starts, y_stops, path_to_save_frame_image, setup_config)
     log.info("ROI Sanity Check Image Created")
 
     # extract ca2+ signal in each well for each frame
@@ -91,10 +93,11 @@ def well_data(setup_config: Dict):
     """
     log.info("Starting Signal Extraction...")
     StartTime = time()
-    frame_num=0
+    frame_num = 0
+    frames_to_skip = setup_config['frames_to_skip']
     while (frame_num < num_frames):
         i=0
-        currentFrame = np.fromfile(file=setup_config['input_path'],dtype=pixel_np_data_type ,count=int(num_horizontal_pixels*num_vertical_pixels ),offset = int(frame_num*num_horizontal_pixels*num_vertical_pixels*pixel_size))
+        currentFrame = np.fromfile(file=setup_config['input_path'],dtype=pixel_np_data_type ,count=int(num_horizontal_pixels*num_vertical_pixels ),offset = int((frame_num+frames_to_skip)*num_horizontal_pixels*num_vertical_pixels*pixel_size))
         currentFrame = currentFrame.reshape(num_vertical_pixels ,num_horizontal_pixels)
         while (i < num_wells):
             x_start = x_starts[i]
@@ -175,41 +178,43 @@ def make_rois(setup_config: Dict):
     roiSizeY = setup_config['stage']['roiSizeY']
     RowNames = ["A","B","C","D","E","F","G","H", "I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X", "Y","Z","AA","AB","AC","AD","AE","AF"]
     wellSpacing = setup_config['stage']['wellSpacing']
-    x_starts = np.empty(num_wells, dtype=np.int64)
-    y_starts = np.empty(num_wells, dtype=np.int64)
+    #x_starts = np.empty(num_wells, dtype=np.int64)
+    x_starts = []
+    #y_starts = np.empty(num_wells, dtype=np.int64)
+    y_starts = []
     x_stops = np.empty(num_wells, dtype=np.int64)
     y_stops = np.empty(num_wells, dtype=np.int64)
     wellNames = list()
     wellRows = list()
     wellColumns = list()
     n=0
-    l=0
-    while(l < nFramesV):
-        frameCenterV = frameCentersV[l]
-        j = 0
-        while(j < numWellsV):
-            k = 0
-            while(k < nFramesH):
-                frameCenterH = frameCentersH[k]
-                i = 0
-                while(i < numWellsH):
-                    #x_starts[n]=frameCenterH-roiSize/2 + (wellSpacing/(2*pixelSize)) - (numWellsH/2 - i) * (wellSpacing/pixelSize)
-                    x_starts[n]=frameCenterH-roiSizeX/2 + (wellSpacing/(2*pixelSize)) - (numWellsH/2 - i) * (wellSpacing/pixelSize)
-                    #x_stops[n] = x_starts[n] + roiSize
-                    x_stops[n] = x_starts[n] + roiSizeX
-                    #y_starts[n] = frameCenterV-roiSize/2 + (wellSpacing/(2*pixelSize)) - (numWellsV/2 - j) * (wellSpacing/pixelSize)
-                    y_starts[n] = frameCenterV-roiSizeY/2 + (wellSpacing/(2*pixelSize)) - (numWellsV/2 - j) * (wellSpacing/pixelSize)
-                    #y_stops[n] = y_starts[n] + roiSize
-                    y_stops[n] = y_starts[n] + roiSizeY
-                    #print(f"{RowNames[numWellsV*l+j]}{(numWellsH*k+i+1)}")
-                    wellNames.append(f"{RowNames[numWellsV*l+j]}{(numWellsH*k+i+1)}")
-                    wellRows.append(numWellsV*l+j)
-                    wellColumns.append(numWellsH*k+i+1)
+    for l in range(0, nFramesV):
+        for k in range(0,nFramesH):
+            for j in range(0,numWellsV):
+                for i in range(0,numWellsH):
+                    #ROIs are defined as an array inside a field of view
+                    # The horizontal center of the farthest left ROI in the field of view is given by image_width/2 - 1/2*(wellSpacing/pixelSize) - numWellsH/2*(wellSpacing/pixelSize) + setup_config['stage']['hOffset']
+                    # The image_width/2 accounts for the fact that the center of the ROI array is the center of the field of view
+                    # The 1/2*(wellSpacing/pixelSize) term arises from the fact that there is always an even number of wells, half of which are to the left of the center, half are to the right, with the closest ROI being 1/2 well spacing away from the center of the FOV
+                    # The setup_config['stage']['hOffset'] term accounts for the fact that the ROI array is not perfectly centered in the field of view
+                    #The numWellsH/2*(wellSpacing/pixelSize) term places the first ROI an integer number of well spacings away from the ROI closest to the center
+                    x_center = setup_config['width']/2 - ((numWellsH-1)/2 - i) * (wellSpacing/pixelSize) + setup_config['stage']['hOffset'] + k*(setup_config['width'])
+                    x_starts.append(x_center - roiSizeX/2 )
+                    y_center = setup_config['height']/2 - ((numWellsV-1)/2 - j) * (wellSpacing/pixelSize) + setup_config['stage']['vOffset'] + l*(setup_config['height'])
+                    y_starts.append(y_center - roiSizeX/2)
+                    wellNames.append(f"{RowNames[j+l*numWellsV]}{(i+1+k*numWellsH)}")
+                    wellRows.append(j+l*numWellsV)
+                    wellColumns.append(i+1+k*numWellsH)
                     n = n + 1
-                    i = i+1
-                k = k + 1
-            j = j +1
-        l=l+1
+
+
+
+    x_starts = np.floor(x_starts).astype(int)
+    y_starts = np.floor(y_starts).astype(int)
+    x_stops = x_starts + roiSizeX
+    y_stops = y_starts + roiSizeY
+     
+
     setup_config['x_starts'] = x_starts
     setup_config['x_stops'] = x_stops
     setup_config['y_starts'] = y_starts
@@ -318,7 +323,7 @@ def signal_to_xlsx_for_sdk(signal_values: np.ndarray, time_stamps: np.ndarray, s
         workbook.close()
         i = i + 1
 
-def frame_with_rois_drawn(frame_to_draw_on: np.ndarray,x_starts: np.ndarray,x_stops: np.ndarray,y_starts: np.ndarray,y_stops: np.ndarray, path_to_save_frame_image: str):
+def frame_with_rois_drawn(frame_to_draw_on: np.ndarray,x_starts: np.ndarray,x_stops: np.ndarray,y_starts: np.ndarray,y_stops: np.ndarray, path_to_save_frame_image: str, setup_config: Dict):
   """ Draw multiple ROIs on one frame image """
   i = 0
   green_line_colour_bgr = (0, 255, 0)
@@ -347,7 +352,18 @@ def frame_with_rois_drawn(frame_to_draw_on: np.ndarray,x_starts: np.ndarray,x_st
           lineType=cv.LINE_AA
       )
       i = i + 1
-  cv.imwrite(path_to_save_frame_image, frame_to_draw_on)
+  #cv.imwrite(path_to_save_frame_image, frame_to_draw_on)
+  
+  frame_to_draw_on = Image.fromarray(frame_to_draw_on)
+  draw = ImageDraw.Draw(frame_to_draw_on)
+  font = ImageFont.truetype('arial.ttf', 15)
+  color = 'rgb(0, 255, 0)'  
+  i = 0
+  while(i < x_starts.size):
+      position = (x_starts[i], y_stops[i]-setup_config['stage']['roiSizeY']/2)
+      draw.text(position, setup_config['wellNames'][i], fill=color, font=font)
+      i = i + 1
+  frame_to_draw_on.save(path_to_save_frame_image)
   
 #def make_output_dir(output_dir_path: str):
 #    """ create the main output dir """
@@ -443,8 +459,31 @@ def main():
         setup_config['plot_format'] = 'png'
     if 'fluorescence_normalization' not in setup_config:
         setup_config['fluorescence_normalization'] = 'None'
-        
     
+    if 'additional_bin_factor' not in setup_config:
+        setup_config['additional_bin_factor'] = 1
+    
+    setup_config['xy_pixel_size'] = setup_config['xy_pixel_size'] * setup_config['additional_bin_factor']
+    
+    setup_config['height'] = setup_config['height']/setup_config['additional_bin_factor']
+    setup_config['width'] = setup_config['width']/setup_config['additional_bin_factor']
+    setup_config['num_horizontal_pixels'] = setup_config['num_horizontal_pixels']/setup_config['additional_bin_factor']
+    setup_config['num_vertical_pixels'] = setup_config['num_vertical_pixels']/setup_config['additional_bin_factor']
+    setup_config['stage']['roiSizeX'] = int(setup_config['stage']['roiSizeX']/setup_config['additional_bin_factor'])
+    setup_config['stage']['roiSizeY'] = int(setup_config['stage']['roiSizeY']/setup_config['additional_bin_factor'])
+
+    setup_config['stage']['roiSizeX'] = int(setup_config['stage']['roiSizeX']/setup_config['scale_factor'])
+    setup_config['stage']['roiSizeY'] = int(setup_config['stage']['roiSizeY']/setup_config['scale_factor'])
+    setup_config['stage']['hOffset'] = int(setup_config['stage']['hOffset']/setup_config['scale_factor'])
+    setup_config['stage']['vOffset'] = int(setup_config['stage']['vOffset']/setup_config['scale_factor'])
+
+
+    if 'frames_to_skip' not in setup_config:
+        setup_config['frames_to_skip'] = 1
+    setup_config['num_frames'] = int(setup_config['num_frames'] - setup_config['frames_to_skip'])
+
+
+
     well_data(setup_config=setup_config)
 
     toml_file.close()
