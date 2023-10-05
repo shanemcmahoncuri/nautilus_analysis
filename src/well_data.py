@@ -120,7 +120,12 @@ def well_data(setup_config: Dict):
     StartTime = time()
     csvFilePath = join_paths(setup_config['output_dir_path'], 'results.csv')
     signal_values_t = signal_values.transpose()
-    np.savetxt(csvFilePath , signal_values_t, delimiter=',')
+    time_stamps = (np.linspace(start=0, stop=setup_config['num_frames'], num=setup_config['num_frames'])+setup_config['frames_to_skip'])/(setup_config['num_frames']+setup_config['frames_to_skip'])* setup_config['duration']
+    result = np.column_stack((time_stamps ,signal_values_t))
+    np.savetxt(csvFilePath , result , delimiter=',', header=','.join(["t"]+setup_config['wellNames']))
+
+    #np.savetxt(csvFilePath , signal_values_t, delimiter=',', header=','.join(setup_config['wellNames']))
+    
     StopTime = time()
     log.info(f"CSV created in {(StopTime - StartTime)} seconds")
     
