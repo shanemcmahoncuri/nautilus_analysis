@@ -11,6 +11,7 @@ from os.path import isdir, basename, join as join_paths
 from time import time
 from typing import Dict
 from PIL import Image, ImageDraw, ImageFont
+from matplotlib.backends.backend_pdf import PdfPages
 
 import logging
 logging.basicConfig(format='[%(asctime)s.%(msecs)03d] [well_data] [%(levelname)s] %(message)s', level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
@@ -124,7 +125,8 @@ def well_data(setup_config: Dict):
     log.info(f"CSV created in {(StopTime - StartTime)} seconds")
     
     if setup_config['save_plots']:
-        signals_to_plot(signal_values, setup_config)
+        #signals_to_plot(signal_values, setup_config)
+        signals_to_plot2(signal_values, setup_config)
      
 
 
@@ -188,9 +190,11 @@ def make_rois(setup_config: Dict):
     wellRows = list()
     wellColumns = list()
     n=0
+    #for l in range(0, nFramesV):
+    #for k in range(0,nFramesH):
     for l in range(0, nFramesV):
-        for k in range(0,nFramesH):
-            for j in range(0,numWellsV):
+        for j in range(0,numWellsV):
+            for k in range(0,nFramesH):
                 for i in range(0,numWellsH):
                     #ROIs are defined as an array inside a field of view
                     # The horizontal center of the farthest left ROI in the field of view is given by image_width/2 - 1/2*(wellSpacing/pixelSize) - numWellsH/2*(wellSpacing/pixelSize) + setup_config['stage']['hOffset']
@@ -262,6 +266,31 @@ def signals_to_plot(signal_values: np.ndarray, setup_config: Dict):
         i = i + 1
 
     plt.savefig(plot_file_path)
+    log.info("Signal Plot Sanity Check Image Created")
+    StopTime = time()
+    log.info(f"Sanity check ran in {(StopTime - StartTime)} seconds")
+
+
+def signals_to_plot2(signal_values: np.ndarray, setup_config: Dict):
+    plot_file_path = join_paths(setup_config['output_dir_path'], 'roi_signals_plots2.pdf')
+    pdf = PdfPages(plot_file_path)
+    StartTime = time()
+    log.info("Creating Signal Plot Sanity Check Image...")
+    time_stamps = np.linspace(start=0, stop=setup_config['duration'], num=setup_config['num_frames'])
+    num_wells, num_data_points = signal_values.shape
+    
+    
+    i = 0
+    while (i < num_wells):
+        well_signal = signal_values[i, :]
+        plt.figure(figsize=(30,10))
+        plt.plot(well_signal)
+        plt.title(f'Plot {setup_config["wellNames"][i]}')
+        pdf.savefig()
+        plt.close()
+        i = i + 1
+    
+    pdf.close() 
     log.info("Signal Plot Sanity Check Image Created")
     StopTime = time()
     log.info(f"Sanity check ran in {(StopTime - StartTime)} seconds")
