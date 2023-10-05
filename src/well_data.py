@@ -122,16 +122,13 @@ def well_data(setup_config: Dict):
     signal_values_t = signal_values.transpose()
     time_stamps = (np.linspace(start=0, stop=setup_config['num_frames'], num=setup_config['num_frames'])+setup_config['frames_to_skip'])/(setup_config['num_frames']+setup_config['frames_to_skip'])* setup_config['duration']
     result = np.column_stack((time_stamps ,signal_values_t))
-    np.savetxt(csvFilePath , result , delimiter=',', header=','.join(["t"]+setup_config['wellNames']))
-
-    #np.savetxt(csvFilePath , signal_values_t, delimiter=',', header=','.join(setup_config['wellNames']))
-    
+    np.savetxt(csvFilePath , result , delimiter=',', header=','.join(["t"]+setup_config['wellNames']))    
     StopTime = time()
     log.info(f"CSV created in {(StopTime - StartTime)} seconds")
     
     if setup_config['save_plots']:
-        #signals_to_plot(signal_values, setup_config)
-        signals_to_plot2(signal_values, setup_config)
+        signals_to_plot(signal_values, setup_config)
+        
      
 
 
@@ -234,50 +231,7 @@ def make_rois(setup_config: Dict):
     return x_starts, x_stops, y_starts, y_stops
 
 def signals_to_plot(signal_values: np.ndarray, setup_config: Dict):
-    """ Create an image with plots of time series data for multiple ROIs """
-    StartTime = time()
-    log.info("Creating Signal Plot Sanity Check Image...")
-    time_stamps = np.linspace(start=0, stop=setup_config['duration'], num=setup_config['num_frames'])
-    num_wells, num_data_points = signal_values.shape
-    #setup_config['num_well_rows'] = nFramesV * numWellsV
-    #setup_config['num_well_cols'] = nFramesH * numWellsH
-    plot_file_path = join_paths(setup_config['output_dir_path'], 'roi_signals_plots.' + setup_config['plot_format'])
-
-    fig, axes = plt.subplots(
-        nrows=setup_config['num_well_rows'], ncols=setup_config['num_well_cols'],
-        figsize=(setup_config['num_well_cols']*3, setup_config['num_well_rows']*3),
-        dpi=300.0,
-        layout='constrained'
-    )
-
-    instrument_name = setup_config['instrument_name']
-    recording_date = setup_config['recording_date']
-    video_file_name = basename(setup_config['input_path'])
-    plot_title = f"{instrument_name} Experiment Data - {recording_date} - {video_file_name}"
-
-    fig.suptitle(plot_title, fontsize=20)
-    fig.supylabel('ROI Average')
-    fig.supxlabel('Time (s)')
-
-    
-    i = 0
-    while (i < num_wells):
-        serial_position = i
-        well_signal = signal_values[serial_position, :]
-        plot_row = setup_config['wellRows'][i]
-        plot_col = setup_config['wellColumns'][i] - 1
-        axes[plot_row, plot_col].plot(time_stamps, well_signal)
-        axes[plot_row, plot_col].set_title(setup_config['wellNames'][i])
-        i = i + 1
-
-    plt.savefig(plot_file_path)
-    log.info("Signal Plot Sanity Check Image Created")
-    StopTime = time()
-    log.info(f"Sanity check ran in {(StopTime - StartTime)} seconds")
-
-
-def signals_to_plot2(signal_values: np.ndarray, setup_config: Dict):
-    plot_file_path = join_paths(setup_config['output_dir_path'], 'roi_signals_plots2.pdf')
+    plot_file_path = join_paths(setup_config['output_dir_path'], 'roi_signals_plots.pdf')
     pdf = PdfPages(plot_file_path)
     StartTime = time()
     log.info("Creating Signal Plot Sanity Check Image...")
