@@ -7,7 +7,7 @@ import toml
 import zipfile
 
 from os import makedirs, walk as dir_ls
-from os.path import isdir, basename, join as join_paths
+from os.path import isdir, basename, splitext, join as join_paths
 from time import time
 from typing import Dict
 from PIL import Image, ImageDraw, ImageFont
@@ -79,7 +79,8 @@ def well_data(setup_config: Dict):
     frame_num = 1
     frame_to_draw_rois_on = np.fromfile(file=setup_config['input_path'],dtype=pixel_np_data_type,count=(num_horizontal_pixels*num_vertical_pixels ),offset = int(frame_num*num_horizontal_pixels*num_vertical_pixels*pixel_size))
     frame_to_draw_rois_on  = frame_to_draw_rois_on.reshape(num_vertical_pixels ,num_horizontal_pixels)
-    path_to_save_frame_image = join_paths(setup_config['output_dir_path'], 'roi_locations.png')
+    #path_to_save_frame_image = join_paths(setup_config['output_dir_path'], 'roi_locations.png')
+    path_to_save_frame_image = (join_paths(setup_config['output_dir_path'], setup_config['prefix']+'.png'))
     if (pixel_size == 2):
         frame_to_draw_rois_on = frame_to_draw_rois_on/(frame_to_draw_rois_on.max())
         frame_to_draw_rois_on = frame_to_draw_rois_on * 255
@@ -118,7 +119,8 @@ def well_data(setup_config: Dict):
         
     log.info("Writing ROI Signals to CSV file...")
     StartTime = time()
-    csvFilePath = join_paths(setup_config['output_dir_path'], 'results.csv')
+    #csvFilePath = join_paths(setup_config['output_dir_path'], 'results.csv')
+    csvFilePath = (join_paths(setup_config['output_dir_path'], setup_config['prefix']+'.csv'))
     signal_values_t = signal_values.transpose()
     time_stamps = (np.linspace(start=0, stop=setup_config['num_frames'], num=setup_config['num_frames'])+setup_config['frames_to_skip'])/(setup_config['num_frames']+setup_config['frames_to_skip'])* setup_config['duration']
     result = np.column_stack((time_stamps ,signal_values_t))
@@ -156,7 +158,9 @@ def save_excel_files(signal_values: np.ndarray, setup_config: Dict):
     # zip all the xlsx files into a single archive
     log.info("Creating Zip Archive For XLSX files...")
     StartTime = time()
-    xlsx_archive_file_path = join_paths(setup_config['output_dir_path'], 'xlsx-results.zip')
+    #xlsx_archive_file_path = join_paths(setup_config['output_dir_path'], 'xlsx-results.zip')
+    xlsx_archive_file_path  = (join_paths(setup_config['output_dir_path'], setup_config['prefix']+'xlsx-results.zip'))
+    
     zip_files(input_dir_path=setup_config['xlsx_output_dir_path'], zip_file_path=xlsx_archive_file_path)
     log.info("Zip Archive For XLSX files Created")
     StopTime = time()
@@ -231,7 +235,9 @@ def make_rois(setup_config: Dict):
     return x_starts, x_stops, y_starts, y_stops
 
 def signals_to_plot(signal_values: np.ndarray, setup_config: Dict):
-    plot_file_path = join_paths(setup_config['output_dir_path'], 'roi_signals_plots.pdf')
+    #plot_file_path = join_paths(setup_config['output_dir_path'], 'roi_signals_plots.pdf')
+    plot_file_path  = (join_paths(setup_config['output_dir_path'], setup_config['prefix']+'.pdf'))
+
     pdf = PdfPages(plot_file_path)
     StartTime = time()
     log.info("Creating Signal Plot Sanity Check Image...")
@@ -439,6 +445,9 @@ def main():
     if args.fps is not None:
         setup_config['fps'] = float(args.fps)
     
+        
+    if 'data_type' not in setup_config:
+        setup_config['data_type'] = "Calcium Imaging"
     if 'save_excel' not in setup_config['stage']:
         setup_config['stage']['save_excel'] = True
     if 'save_plots' not in setup_config:
@@ -470,7 +479,9 @@ def main():
         setup_config['frames_to_skip'] = 1
     setup_config['num_frames'] = int(setup_config['num_frames'] - setup_config['frames_to_skip'])
 
-
+    setup_config['prefix']=(splitext(basename(setup_config['input_path']))[0])
+    print(setup_config['prefix'])
+    
 
     well_data(setup_config=setup_config)
 
